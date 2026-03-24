@@ -431,8 +431,9 @@ class NethermindExceptionMapper(ExceptionMapper):
         BlockException.SYSTEM_CONTRACT_CALL_FAILED: (
             r"(Withdrawals|Consolidations)Failed: Contract execution failed\."
         ),
-        # BAL Exceptions — each specific exception uses a unique pattern.
-        # INVALID_BLOCK_ACCESS_LIST is the generic catch-all for all BAL errors.
+        # BAL Exceptions — specific exceptions have unique patterns, but
+        # INVALID_BLOCK_ACCESS_LIST and INCORRECT_BLOCK_FORMAT intentionally
+        # overlap because the test framework requires `want in got` matching.
         BlockException.INVALID_BAL_HASH: (
             r"InvalidBlockLevelAccessListHash:"
         ),
