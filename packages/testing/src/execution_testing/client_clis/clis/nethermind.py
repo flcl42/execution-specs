@@ -431,21 +431,30 @@ class NethermindExceptionMapper(ExceptionMapper):
         BlockException.SYSTEM_CONTRACT_CALL_FAILED: (
             r"(Withdrawals|Consolidations)Failed: Contract execution failed\."
         ),
-        # BAL Exceptions: TODO - review once all clients completed.
-        BlockException.INVALID_BAL_EXTRA_ACCOUNT: (
-            r"could not be parsed as a block: "
-            r"Could not decode block access list."
+        # BAL Exceptions — each specific exception uses a unique pattern.
+        # INVALID_BLOCK_ACCESS_LIST is the generic catch-all for all BAL errors.
+        BlockException.INVALID_BAL_HASH: (
+            r"InvalidBlockLevelAccessListHash:"
         ),
-        BlockException.INVALID_BAL_HASH: (r"InvalidBlockLevelAccessListRoot:"),
         BlockException.INVALID_BAL_MISSING_ACCOUNT: (
-            r"InvalidBlockLevelAccessListRoot:"
+            r"InvalidBlockLevelAccessList:.*missing account"
+        ),
+        BlockException.INVALID_BAL_EXTRA_ACCOUNT: (
+            r"InvalidBlockLevelAccessList:.*surplus changes"
+            r"|could not be parsed as a block: "
+            r"Error decoding block access list:"
         ),
         BlockException.INVALID_BLOCK_ACCESS_LIST: (
-            r"InvalidBlockLevelAccessListRoot:|could not be parsed as a "
-            r"block: Could not decode block access list."
+            r"InvalidBlockLevelAccessListHash:"
+            r"|InvalidBlockLevelAccessList:"
+            r"|could not be parsed as a block: "
+            r"Error decoding block access list:"
         ),
         BlockException.INCORRECT_BLOCK_FORMAT: (
             r"could not be parsed as a block: "
-            r"Could not decode block access list."
+            r"Error decoding block access list:"
+        ),
+        TransactionException.GAS_ALLOWANCE_EXCEEDED: (
+            r"TxGasLimitCapExceeded:"
         ),
     }
