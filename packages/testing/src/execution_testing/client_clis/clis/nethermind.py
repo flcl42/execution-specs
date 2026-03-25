@@ -397,6 +397,9 @@ class NethermindExceptionMapper(ExceptionMapper):
             "InvalidStateRoot: State root in header does not match"
         ),
         BlockException.GAS_USED_OVERFLOW: ("Block gas limit exceeded"),
+        BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED: (
+            "BlockAccessListGasLimitExceeded:"
+        ),
     }
     mapping_regex = {
         TransactionException.INSUFFICIENT_ACCOUNT_FUNDS: (
