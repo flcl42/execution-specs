@@ -217,12 +217,29 @@ def process_create_message(message: Message) -> Evm:
     evm = process_message(message)
     if not evm.error:
         contract_code = evm.output
+        cost_per_state_byte = state_gas_per_byte(
+            message.block_env.block_gas_limit
+        )
+        code_deposit_state_gas = Uint(len(contract_code)) * cost_per_state_byte
+
         try:
             if len(contract_code) > 0:
                 if contract_code[0] == 0xEF:
                     raise InvalidContractPrefix
             if len(contract_code) > MAX_CODE_SIZE:
                 raise OutOfGasError
+
+            # EIP-8037 requires the code deposit gas check to fail before
+            # hash computation, so a failed deployment keeps any unused
+            # regular gas from the child frame.
+            if evm.state_gas_left + evm.gas_left < code_deposit_state_gas:
+                restore_tx_state(tx_state, snapshot)
+                evm.output = b""
+                evm.error = OutOfGasError()
+                return evm
+
+            charge_state_gas(evm, code_deposit_state_gas)
+
             # Hash cost for computing keccak256 of deployed bytecode
             code_hash_gas = (
                 GAS_KECCAK256_PER_WORD
@@ -230,13 +247,6 @@ def process_create_message(message: Message) -> Evm:
                 // Uint(32)
             )
             charge_gas(evm, code_hash_gas)
-            cost_per_state_byte = state_gas_per_byte(
-                message.block_env.block_gas_limit
-            )
-            code_deposit_state_gas = (
-                Uint(len(contract_code)) * cost_per_state_byte
-            )
-            charge_state_gas(evm, code_deposit_state_gas)
         except ExceptionalHalt as error:
             restore_tx_state(tx_state, snapshot)
             evm.regular_gas_used += evm.gas_left

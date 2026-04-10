@@ -470,6 +470,89 @@ def test_code_deposit_oog_preserves_parent_reservoir(
 
 
 @pytest.mark.valid_from("Amsterdam")
+def test_code_deposit_oog_returns_unused_regular_gas_to_parent(
+    state_test: StateTestFiller,
+    pre: Alloc,
+    fork: Fork,
+) -> None:
+    """
+    Test failed code deposit does not consume unused regular gas.
+
+    EIP-8037's deployment failure path charges only GAS_CREATE and the
+    initcode execution cost. If code deposit cannot be paid, the child
+    frame must return its unused regular gas to the parent so the parent
+    can keep executing.
+    """
+    gas_limit_cap = fork.transaction_gas_limit_cap()
+    assert gas_limit_cap is not None
+    sstore_state_gas = fork.sstore_state_gas()
+
+    deploy_size = 4096
+    initcode = Initcode(deploy_code=Op.STOP * deploy_size)
+    initcode_len = len(initcode)
+
+    # This padding needs more regular gas than CREATE's 1/64 retained
+    # amount, but far less than the unused child gas that should be
+    # returned on a code-deposit failure.
+    post_failure_padding = Op.JUMPDEST * 8000
+
+    factory_storage = Storage()
+    factory = pre.deploy_contract(
+        code=(
+            Op.CALLDATACOPY(
+                0,
+                0,
+                Op.CALLDATASIZE,
+                data_size=initcode_len,
+                new_memory_size=initcode_len,
+            )
+            + Op.POP(
+                Op.CREATE(
+                    value=0,
+                    offset=0,
+                    size=Op.CALLDATASIZE,
+                    init_code_size=initcode_len,
+                )
+            )
+            + post_failure_padding
+            + Op.SSTORE(
+                factory_storage.store_next(1, "regular_gas_preserved"),
+                1,
+            )
+            + Op.STOP
+        ),
+    )
+
+    caller = pre.deploy_contract(
+        code=(
+            Op.CALLDATACOPY(0, 0, Op.CALLDATASIZE)
+            + Op.POP(
+                Op.CALL(
+                    gas=200_000,
+                    address=factory,
+                    value=0,
+                    args_offset=0,
+                    args_size=Op.CALLDATASIZE,
+                    ret_offset=0,
+                    ret_size=0,
+                )
+            )
+            + Op.STOP
+        ),
+    )
+
+    tx = Transaction(
+        to=caller,
+        data=bytes(initcode),
+        gas_limit=gas_limit_cap + sstore_state_gas,
+        sender=pre.fund_eoa(),
+    )
+
+    post = {factory: Account(storage=factory_storage)}
+    state_test(pre=pre, post=post, tx=tx)
+
+
+@pytest.mark.valid_from("Amsterdam")
 def test_nested_create_code_deposit_cannot_borrow_parent_gas(
     state_test: StateTestFiller,
     pre: Alloc,
