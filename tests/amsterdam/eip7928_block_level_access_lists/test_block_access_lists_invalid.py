@@ -622,6 +622,55 @@ def test_bal_invalid_missing_account(
 
 @pytest.mark.valid_from("Amsterdam")
 @pytest.mark.exception_test
+def test_bal_invalid_missing_account_only_access(
+    blockchain_test: BlockchainTestFiller,
+    pre: Alloc,
+) -> None:
+    """
+    Test that clients reject blocks whose BAL omits an account that was
+    accessed without state changes.
+    """
+    sender = pre.fund_eoa(amount=10**18)
+    target = pre.fund_eoa(amount=1)
+    checker = pre.deploy_contract(code=Op.BALANCE(target) + Op.POP + Op.STOP)
+
+    tx = Transaction(
+        sender=sender,
+        to=checker,
+        gas_limit=100_000,
+    )
+
+    blockchain_test(
+        pre=pre,
+        post={
+            sender: Account(balance=10**18, nonce=0),
+            target: Account(balance=1),
+            checker: Account(),
+        },
+        blocks=[
+            Block(
+                txs=[tx],
+                exception=BlockException.INVALID_BAL_MISSING_ACCOUNT,
+                expected_block_access_list=BlockAccessListExpectation(
+                    account_expectations={
+                        sender: BalAccountExpectation(
+                            nonce_changes=[
+                                BalNonceChange(
+                                    block_access_index=1, post_nonce=1
+                                ),
+                            ],
+                        ),
+                        checker: BalAccountExpectation.empty(),
+                        target: BalAccountExpectation.empty(),
+                    }
+                ).modify(remove_accounts(target)),
+            )
+        ],
+    )
+
+
+@pytest.mark.valid_from("Amsterdam")
+@pytest.mark.exception_test
 def test_bal_invalid_missing_withdrawal_account(
     blockchain_test: BlockchainTestFiller,
     pre: Alloc,
