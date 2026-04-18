@@ -9,6 +9,7 @@ from typing import Callable
 import pytest
 from execution_testing import (
     Account,
+    Address,
     Alloc,
     BalAccountChange,
     BalAccountExpectation,
@@ -59,10 +60,53 @@ from execution_testing.test_types.block_access_list.modifiers import (
     swap_bal_indices,
 )
 
+from tests.cancun.eip4788_beacon_root.spec import Spec, SpecHelpers
+
 from .spec import ref_spec_7928
 
 REFERENCE_SPEC_GIT_PATH = ref_spec_7928.git_path
 REFERENCE_SPEC_VERSION = ref_spec_7928.version
+
+BEACON_ROOTS_ADDRESS = Address(Spec.BEACON_ROOTS_ADDRESS)
+SYSTEM_ADDRESS = Address(Spec.SYSTEM_ADDRESS)
+
+
+def beacon_root_system_call_expectations(
+    timestamp: int,
+    beacon_root: Hash,
+) -> dict:
+    """
+    Build BAL expectations for the EIP-4788 pre-execution system call.
+    """
+    helpers = SpecHelpers()
+    timestamp_slot = helpers.timestamp_index(timestamp)
+    root_slot = helpers.root_index(timestamp)
+
+    return {
+        BEACON_ROOTS_ADDRESS: BalAccountExpectation(
+            storage_changes=[
+                BalStorageSlot(
+                    slot=timestamp_slot,
+                    slot_changes=[
+                        BalStorageChange(
+                            block_access_index=0,
+                            post_value=timestamp,
+                        )
+                    ],
+                ),
+                BalStorageSlot(
+                    slot=root_slot,
+                    slot_changes=[
+                        BalStorageChange(
+                            block_access_index=0,
+                            post_value=beacon_root,
+                        )
+                    ],
+                ),
+            ],
+        ),
+        SYSTEM_ADDRESS: None,
+    }
 
 
 @pytest.mark.valid_from("Amsterdam")
@@ -741,6 +785,43 @@ def test_bal_invalid_missing_withdrawal_account_empty_block(
                         ),
                     }
                 ).modify(remove_accounts(charlie)),
+            )
+        ],
+    )
+
+
+@pytest.mark.valid_from("Amsterdam")
+@pytest.mark.exception_test
+def test_bal_invalid_surplus_system_address_from_system_call(
+    blockchain_test: BlockchainTestFiller,
+    pre: Alloc,
+) -> None:
+    """
+    Test that clients reject a BAL that includes SYSTEM_ADDRESS solely because
+    it was the synthetic caller of a pre-execution system operation.
+    """
+    block_timestamp = 12
+    beacon_root = Hash(0xABCDEF)
+
+    blockchain_test(
+        pre=pre,
+        post={},
+        blocks=[
+            Block(
+                txs=[],
+                parent_beacon_block_root=beacon_root,
+                timestamp=block_timestamp,
+                exception=BlockException.INVALID_BLOCK_ACCESS_LIST,
+                expected_block_access_list=BlockAccessListExpectation(
+                    account_expectations=beacon_root_system_call_expectations(
+                        block_timestamp,
+                        beacon_root,
+                    )
+                ).modify(
+                    append_account(
+                        BalAccountChange(address=SYSTEM_ADDRESS),
+                    )
+                ),
             )
         ],
     )

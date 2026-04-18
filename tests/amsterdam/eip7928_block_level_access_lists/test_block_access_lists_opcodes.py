@@ -48,6 +48,8 @@ REFERENCE_SPEC_VERSION = ref_spec_7928.version
 
 pytestmark = pytest.mark.valid_from("Amsterdam")
 
+SYSTEM_ADDRESS = Address(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE)
+
 
 class OutOfGasAt(Enum):
     """
@@ -317,6 +319,48 @@ def test_bal_balance_and_oog(
             alice: Account(nonce=1),
             bob: Account(),
             balance_checker: Account(),
+        },
+    )
+
+
+def test_bal_balance_explicit_system_address(
+    pre: Alloc,
+    blockchain_test: BlockchainTestFiller,
+) -> None:
+    """
+    Ensure a regular transaction that explicitly reads SYSTEM_ADDRESS via
+    BALANCE includes SYSTEM_ADDRESS as an account-only BAL entry.
+    """
+    alice = pre.fund_eoa()
+    pre.fund_address(SYSTEM_ADDRESS, amount=1)
+
+    balance_checker = pre.deploy_contract(
+        code=Op.BALANCE(SYSTEM_ADDRESS) + Op.POP + Op.STOP
+    )
+
+    tx = Transaction(
+        sender=alice,
+        to=balance_checker,
+        gas_limit=100_000,
+    )
+
+    block = Block(
+        txs=[tx],
+        expected_block_access_list=BlockAccessListExpectation(
+            account_expectations={
+                balance_checker: BalAccountExpectation.empty(),
+                SYSTEM_ADDRESS: BalAccountExpectation.empty(),
+            }
+        ),
+    )
+
+    blockchain_test(
+        pre=pre,
+        blocks=[block],
+        post={
+            alice: Account(nonce=1),
+            balance_checker: Account(),
+            SYSTEM_ADDRESS: Account(balance=1),
         },
     )
 
