@@ -9,7 +9,6 @@ from typing import Callable
 import pytest
 from execution_testing import (
     Account,
-    Address,
     Alloc,
     BalAccountChange,
     BalAccountExpectation,
@@ -60,53 +59,14 @@ from execution_testing.test_types.block_access_list.modifiers import (
     swap_bal_indices,
 )
 
-from tests.cancun.eip4788_beacon_root.spec import Spec, SpecHelpers
-
 from .spec import ref_spec_7928
+from .test_block_access_lists_eip4788 import (
+    SYSTEM_ADDRESS,
+    beacon_root_system_call_expectations,
+)
 
 REFERENCE_SPEC_GIT_PATH = ref_spec_7928.git_path
 REFERENCE_SPEC_VERSION = ref_spec_7928.version
-
-BEACON_ROOTS_ADDRESS = Address(Spec.BEACON_ROOTS_ADDRESS)
-SYSTEM_ADDRESS = Address(Spec.SYSTEM_ADDRESS)
-
-
-def beacon_root_system_call_expectations(
-    timestamp: int,
-    beacon_root: Hash,
-) -> dict:
-    """
-    Build BAL expectations for the EIP-4788 pre-execution system call.
-    """
-    helpers = SpecHelpers()
-    timestamp_slot = helpers.timestamp_index(timestamp)
-    root_slot = helpers.root_index(timestamp)
-
-    return {
-        BEACON_ROOTS_ADDRESS: BalAccountExpectation(
-            storage_changes=[
-                BalStorageSlot(
-                    slot=timestamp_slot,
-                    slot_changes=[
-                        BalStorageChange(
-                            block_access_index=0,
-                            post_value=timestamp,
-                        )
-                    ],
-                ),
-                BalStorageSlot(
-                    slot=root_slot,
-                    slot_changes=[
-                        BalStorageChange(
-                            block_access_index=0,
-                            post_value=beacon_root,
-                        )
-                    ],
-                ),
-            ],
-        ),
-        SYSTEM_ADDRESS: None,
-    }
 
 
 @pytest.mark.valid_from("Amsterdam")

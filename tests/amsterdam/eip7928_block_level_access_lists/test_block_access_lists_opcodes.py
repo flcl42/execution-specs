@@ -41,14 +41,13 @@ from execution_testing import (
 )
 
 from .spec import ref_spec_7928
+from .test_block_access_lists_eip4788 import SYSTEM_ADDRESS
 
 REFERENCE_SPEC_GIT_PATH = ref_spec_7928.git_path
 REFERENCE_SPEC_VERSION = ref_spec_7928.version
 
 
 pytestmark = pytest.mark.valid_from("Amsterdam")
-
-SYSTEM_ADDRESS = Address(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE)
 
 
 class OutOfGasAt(Enum):
@@ -323,32 +322,53 @@ def test_bal_balance_and_oog(
     )
 
 
-def test_bal_balance_explicit_system_address(
+@pytest.mark.parametrize(
+    "access_opcode",
+    [
+        pytest.param(lambda target: Op.BALANCE(target), id="balance"),
+        pytest.param(lambda target: Op.EXTCODESIZE(target), id="extcodesize"),
+        pytest.param(lambda target: Op.EXTCODEHASH(target), id="extcodehash"),
+        pytest.param(
+            lambda target: Op.EXTCODECOPY(target, 0, 0, 0),
+            id="extcodecopy",
+        ),
+        pytest.param(lambda target: Op.CALL(address=target), id="call"),
+        pytest.param(
+            lambda target: Op.STATICCALL(address=target),
+            id="staticcall",
+        ),
+    ],
+)
+def test_bal_account_touch_system_address(
     pre: Alloc,
     blockchain_test: BlockchainTestFiller,
+    access_opcode: Callable[[Address], Bytecode],
 ) -> None:
     """
-    Ensure a regular transaction that explicitly reads SYSTEM_ADDRESS via
-    BALANCE includes SYSTEM_ADDRESS as an account-only BAL entry.
+    Ensure a regular transaction that explicitly touches SYSTEM_ADDRESS via
+    an account-accessing opcode includes SYSTEM_ADDRESS as an account-only
+    BAL entry.
+
+    This confirms that SYSTEM_ADDRESS is only excluded from the BAL when it
+    appears as the synthetic caller of a pre-execution system call; a real
+    EVM state access from user code MUST still land in the BAL.
     """
     alice = pre.fund_eoa()
     pre.fund_address(SYSTEM_ADDRESS, amount=1)
 
-    balance_checker = pre.deploy_contract(
-        code=Op.BALANCE(SYSTEM_ADDRESS) + Op.POP + Op.STOP
-    )
+    toucher = pre.deploy_contract(code=access_opcode(SYSTEM_ADDRESS) + Op.STOP)
 
     tx = Transaction(
         sender=alice,
-        to=balance_checker,
-        gas_limit=100_000,
+        to=toucher,
+        gas_limit=200_000,
     )
 
     block = Block(
         txs=[tx],
         expected_block_access_list=BlockAccessListExpectation(
             account_expectations={
-                balance_checker: BalAccountExpectation.empty(),
+                toucher: BalAccountExpectation.empty(),
                 SYSTEM_ADDRESS: BalAccountExpectation.empty(),
             }
         ),
@@ -359,7 +379,7 @@ def test_bal_balance_explicit_system_address(
         blocks=[block],
         post={
             alice: Account(nonce=1),
-            balance_checker: Account(),
+            toucher: Account(),
             SYSTEM_ADDRESS: Account(balance=1),
         },
     )
