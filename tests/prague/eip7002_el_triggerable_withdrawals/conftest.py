@@ -107,15 +107,6 @@ def blocks(
             block_number=len(blocks) + 1,
             timestamp=timestamp,
         )
-        if block_fork.is_eip_enabled(8037):
-            gas_costs = block_fork.gas_costs()
-            for r in block_requests:
-                if isinstance(r, WithdrawalRequestContract):
-                    # Each withdrawal request writes 3 new storage slots
-                    # in the system contract queue (source, pubkey, amount).
-                    r.tx_gas_limit += (
-                        len(r.requests) * 3 * gas_costs.STORAGE_SET
-                    )
         header_verify: Header | None = None
         if block_fork.header_requests_required():
             header_verify = Header(
@@ -127,7 +118,7 @@ def blocks(
             assert not block_included_requests
         blocks.append(
             Block(
-                txs=sum((r.transactions(fork) for r in block_requests), []),
+                txs=sum((r.transactions(block_fork) for r in block_requests), []),
                 header_verify=header_verify,
                 timestamp=timestamp,
             )
